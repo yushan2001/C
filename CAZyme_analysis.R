@@ -1,6 +1,6 @@
 # CAZyme analysis workflow
 #
-# This script combines the phylogenetic annotation, seasonal comparison,
+# This script combines the phylogenetic annotation, seasonal comparison
 # heatmap, NMDS/PERMANOVA, and taxonomic contribution analyses used in the study.
 # Input/output paths and analysis parameters are retained from the working scripts.
 
