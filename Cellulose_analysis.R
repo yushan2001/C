@@ -2,14 +2,16 @@
 #
 # Modules:
 #   1. Cellulase Z-score heatmap
-#   2. Circular phylogenetic tree with 21 cellulose-related gene rings
-#   3. Seasonal Order-cellulase chord diagrams
+#   2. Cellulose-related MAG circular phylogeny
+#   3. Seasonal order-level cellulase chord diagrams
 #
-# Original paths, sheets, gene order, analysis settings, colors,
-# plotting parameters, and output filenames are retained.
+# The original paths, sheet names, enzyme columns, analytical logic,
+# plotting parameters, colors, and output filenames are retained.
 # ==============================================================================
 
-# ===================== 加载包 =====================
+# ==============================================================================
+# 1. Cellulase Z-score heatmap
+# ==============================================================================
 if (!require(readxl)) install.packages("readxl")
 if (!require(ggplot2)) install.packages("ggplot2")
 if (!require(dplyr)) install.packages("dplyr")
@@ -22,11 +24,11 @@ library(dplyr)
 library(tidyr)     
 library(scales)
 
-# ===================== 1. 读取原始数据 =====================
+# ===================== 1. 读取Sheet5原始数据 =====================
 file_path <- "C:/Users/余山小可爱/Desktop/纤维素原始代码数据.xlsx"
 df_raw <- read_excel(file_path, sheet = "Sheet1")
 
-# 数据结构检查
+# 核对数据结构
 cat("===  原始数据核对 ===\n")
 cat("数据维度：", nrow(df_raw), " 种纤维素酶 × ", ncol(df_raw)-1, " 个样本\n")
 cat("样本列表：", paste(colnames(df_raw)[-1], collapse = ", "), "\n")
@@ -34,21 +36,21 @@ cat("纤维素酶原始顺序：", paste(df_raw$cellulase_type, collapse = ", ")
 cat("\n")
 
 # ===================== 2. 数据预处理 + Z-score标准化 =====================
-# 设置行名并转换为数值矩阵
+# 步骤1：设置行名，转为数值矩阵
 df_matrix <- df_raw %>%
   column_to_rownames("cellulase_type") %>%
   as.matrix()
 
-# 缺失值填充为 0
+# 步骤2：处理缺失值，填充为0
 df_matrix[is.na(df_matrix)] <- 0
 
-# 按纤维素酶进行行 Z-score 标准化
+# 步骤3：按行（纤维素酶）做Z-score标准化（消除量纲差异）
 # 公式：Z = (x - 行均值) / 行标准差
 df_zscore <- t(apply(df_matrix, 1, function(x) {
   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
 }))
 
-# 转换为长格式
+# 步骤4：转长格式，适配ggplot2绘图
 df_zscore_long <- as.data.frame(df_zscore) %>%
   rownames_to_column("cellulase_type") %>%
   pivot_longer(
@@ -57,12 +59,12 @@ df_zscore_long <- as.data.frame(df_zscore) %>%
     values_to = "Z_score"
   )
 
-# 固定样本顺序
+# 步骤5：固定样本顺序（和原始数据一致，04样本在前，10样本在后）
 sample_order <- colnames(df_raw)[-1]
 df_zscore_long$Sample <- factor(df_zscore_long$Sample, levels = sample_order)
 
-# ===================== 固定纤维素酶原始顺序 =====================
-# 使用原始数据行顺序
+# ===================== 锁定纤维素酶原始顺序，不做丰度排序 =====================
+# 使用原始数据的行顺序，不重新排序
 enzyme_original_order <- df_raw$cellulase_type
 df_zscore_long$cellulase_type <- factor(df_zscore_long$cellulase_type, levels = enzyme_original_order)
 
@@ -71,9 +73,9 @@ heatmap_plot <- ggplot(
   df_zscore_long,
   aes(x = Sample, y = cellulase_type, fill = Z_score)
 ) +
-  # 热图图层
+  # 热图核心图层
   geom_tile(color = "white", linewidth = 0.2) +
-  # 配色：低值为蓝色，中值为白色，高值为红色
+  # 热图配色：低=蓝，中=白，高=红
   scale_fill_gradient2(
     low = "#2C7BB6",
     mid = "white",
@@ -106,7 +108,7 @@ heatmap_plot <- ggplot(
     panel.grid = element_blank()
   )
 
-# 显示热图
+# 显示绘制的热图
 print(heatmap_plot)
 
 # ===================== 4. 保存图片 =====================
@@ -126,12 +128,23 @@ ggsave(
   bg = "white"
 )
 
-
+# ===================== 5. 输出结果提示 =====================
+cat(" 标准化热图已保存\n")
+cat(" 输出文件：\n")
+cat("  1. 纤维素酶标准化热图_原始顺序.png\n")
+cat("  2. 纤维素酶标准化热图_原始顺序.pdf\n")
+cat("\n 热图说明：\n")
+cat("  - 已按纤维素酶行做Z-score标准化，消除不同酶的丰度量纲差异\n")
+cat("  - 颜色越红：该酶在对应样本中的相对丰度越高\n")
+cat("  - 颜色越蓝：该酶在对应样本中的相对丰度越低\n")
+cat("  - 横轴样本按你原始数据顺序排列，04月样本在前，10月样本在后\n")
+cat("  - 纵轴纤维素酶按 Excel 原始行顺序呈现\n")
+# Cellulose-related MAG circular phylogeny
 # ==============================================================================
-# 纤维素相关基因环形进化树
+# 环形进化树多环标注脚本 - 纤维素基因21圈绝对数量版
 # ==============================================================================
 
-# 1. 加载依赖包
+# 1. 自动检查并安装缺失的库
 if (!requireNamespace("ggtree", quietly = TRUE)) { install.packages("BiocManager"); BiocManager::install("ggtree") }
 if (!requireNamespace("ape", quietly = TRUE)) install.packages("ape")
 if (!requireNamespace("tidyverse", quietly = TRUE)) install.packages("tidyverse")
@@ -155,7 +168,7 @@ tree_path  <- "C:/Users/余山小可爱/Desktop/gtdb_results.backbone.bac120.cla
 output_dir <- "C:/Users/余山小可爱/Desktop/Output_Phylogeny_Pro/"
 if (!dir.exists(output_dir)) dir.create(output_dir)
 
-# 绘图布局与几何参数
+# 沿用参考代码的绘图布局与几何参数
 tree_line_size <- 0.8     # 树枝线条粗细
 tip_point_size <- 2.5     # 门分类 Tip 点大小
 hilight_alpha  <- 0.3     # 背景高亮透明度
@@ -166,7 +179,7 @@ ring_width     <- 0.045   # 每圈热图的物理宽度
 ring_gap       <- 0.006   # 圈与圈之间的空隙
 border_size    <- 0.05    # 热图小方块的黑色边框粗细
 
-# 21 个纤维素相关基因列，按内环到外环排列
+#  21 个纤维素相关基因列（从内环到外环）
 gene_cols <- c(
   "1,4-beta-D-glucan glucohydrolase",
   "Beta-N-acetylglucosaminidase/beta-glucosidase",
@@ -200,7 +213,7 @@ full_df <- full_df %>%
   rename(Bin = `bin_name`) %>%  
   mutate(Bin = trimws(Bin))
 
-# 读取进化树并保留与 Excel 匹配的样本
+# 读取并过滤进化树，确保树和 Excel 里的样本完全交集匹配
 tree <- read.tree(tree_path)
 keep_bins <- intersect(tree$tip.label, full_df$Bin)
 filtered_tree <- drop.tip(tree, tree$tip.label[!tree$tip.label %in% keep_bins])
@@ -215,11 +228,11 @@ for(col in gene_cols) {
     checkm_df[[col]] <- as.numeric(as.character(checkm_df[[col]]))
     checkm_df[[col]][is.na(checkm_df[[col]])] <- 0
   } else {
-    warning(paste0(" 注意：在 Excel 中未找到列名：'", col, "'，请检查是否字打错了！"))
+    warning(paste0(" 注意：在 Excel 中未找到列名：'", col, "'，请检查列名。"))
   }
 }
 
-# 获取基因拷贝数最大值
+# 自动寻找真实的基因拷贝数最大值
 max_actual_val <- checkm_df %>% select(any_of(gene_cols)) %>% max(na.rm = TRUE)
 if(is.na(max_actual_val) || max_actual_val == 0) max_actual_val <- 10
 
@@ -228,20 +241,20 @@ if(is.na(max_actual_val) || max_actual_val == 0) max_actual_val <- 10
 unique_phyla <- unique(checkm_df$Phylum)
 phylum_color_map <- setNames(scales::hue_pal()(length(unique_phyla)), unique_phyla)
 
-# 3.1 基础树
+# 3.1 基础树设置
 p_base <- ggtree(filtered_tree, layout = "circular", color = "black", size = tree_line_size)
 
-# 获取树的最大半径
+# 动态获取树的最外层真实半径
 max_radius <- max(p_base$data$x)
 tip_coords <- p_base$data %>% filter(isTip) %>% select(label, y)
 
 current_plot <- p_base
 
-# 3.2 计算高亮背景延伸长度
+# 3.2 动态计算高亮背景延伸长度（基础半径 + 起始偏移 + 21圈的总物理宽度）
 heatmap_total_width <- length(gene_cols) * (ring_width + ring_gap)
 extend_length <- strip_offset + heatmap_total_width - ring_gap
 
-# 门水平背景高亮
+# 门水平高亮
 for (phylum_name in unique_phyla) {
   tips_in_phylum <- checkm_df %>% filter(Phylum == phylum_name) %>% pull(Bin)
   valid_tips <- tips_in_phylum[tips_in_phylum %in% filtered_tree$tip.label]
@@ -261,7 +274,7 @@ for (phylum_name in unique_phyla) {
   }
 }
 
-# ===================== 4. 绘制 21 层绝对数量热图环 =====================
+# ===================== 4. 绘制绝对数量热图环 (21层新顺序) =====================
 for (i in seq_along(gene_cols)) {
   gene_name <- gene_cols[i]
   if(!gene_name %in% colnames(checkm_df)) next
@@ -269,7 +282,7 @@ for (i in seq_along(gene_cols)) {
   ring_data <- checkm_df %>% 
     select(Bin, val = !!sym(gene_name)) %>%
     inner_join(tip_coords, by = c("Bin" = "label")) %>%
-    # 计算当前热图环的 X 坐标
+    # 计算当前圈在参考空间坐标系下的精确 X 轴坐标
     mutate(x = max_radius + strip_offset + (i-1) * (ring_width + ring_gap) + (ring_width/2))
   
   current_plot <- current_plot +
@@ -283,14 +296,14 @@ for (i in seq_along(gene_cols)) {
 }
 
 # ===================== 5. 添加 Tip 点 (Phylum) =====================
-# 添加门水平 Tip 点
+# Tip 点设置
 final_plot <- current_plot + 
   new_scale_color() + 
   geom_tippoint(data = p_base$data %>% filter(isTip) %>% left_join(checkm_df, by = c("label" = "Bin")), 
                 aes(x = x, y = y, color = Phylum), size = tip_point_size, alpha = 0.9, inherit.aes = FALSE) +
   scale_color_manual(values = phylum_color_map, name = "Phylum")
 
-# ===================== 6. 导出结果与图例 =====================
+# ===================== 6. 导出结果与数量图例 =====================
 first_valid_gene <- gene_cols[1]
 
 legend_plot <- ggplot(checkm_df) +
@@ -307,7 +320,7 @@ legend_plot <- ggplot(checkm_df) +
 
 all_legend <- get_legend(legend_plot)
 
-# 移除主图图例并调整外圈边界
+# 移除主图自带的图例，并微调右侧 xlim 边界防止外圈截断
 final_main <- final_plot + 
   theme(legend.position = "none") + 
   xlim(0, max_radius + strip_offset + heatmap_total_width + 0.4)
@@ -316,9 +329,15 @@ final_main <- final_plot +
 ggsave(paste0(output_dir, "Main_Tree_Cellulose_v3.png"), final_main, width = 18, height = 18, dpi = 600, device = png(type = "cairo"))
 ggsave(paste0(output_dir, "Main_Tree_Cellulose_v3.pdf"), final_main, width = 18, height = 18, device = "pdf")
 
-# 保存独立图例
+# 保存独立提取的复合图例
 ggsave(paste0(output_dir, "Legends_Cellulose_v3.pdf"), ggdraw(all_legend), width = 5, height = 10, device = "pdf")
 
+# ===================== 7. 结束 =====================
+cat("\n 环形树分析完成。\n")
+cat(" 基础进化树线宽为0.8，Tip点大小为2.5。\n")
+cat(" 21个热图功能环及高亮区域已完成绘制。\n")
+cat(" 结果目录：", output_dir, "\n")
+# Seasonal order-level cellulase chord diagrams
 # ============================================================
 # 纤维素降解潜在贡献 Chord Diagram
 #
@@ -638,147 +657,121 @@ df_gene <- df_gene %>%
 
 
 # ============================================================
-# 10. 定义纤维素酶分类函数
+# 10. 指定三类纤维素酶的数据列
 #
-# 分类依据：
+# Sheet2 中已经存在三个独立的真实数据列：
 #
-# 根据列名判断：
-#
-# EG：
-# EG
 # Endoglucanase
-# Endo-glucanase
-# Endo_glucanase
-#
-# ExG：
-# ExG
 # Exoglucanase
-# Exo-glucanase
-# Exo_glucanase
-#
-# 注意：
-# Cellobiohydrolase / CBH 不再并入 ExG，
-# 它们会归入 Other cellulases。
-#
-# BGL：
-# BGL
 # Beta-glucosidase
-# β-glucosidase
 #
-# 其余全部：
-# Other cellulases
+# 因此这里直接按照这三个列名进行精确分类，
+# 不再根据相似字符串、缩写或其他酶名称进行推断。
 #
+# 这样可以保证：
+# Endoglucanase 数据只进入 Endoglucanase (EG)
+# Exoglucanase 数据只进入 Exoglucanase (ExG)
+# Beta-glucosidase 数据只进入 Beta-glucosidase (BGL)
+# 其余所有 Sheet2 中的纤维素相关酶/基因列进入 Other cellulases
 #
-# 不自动用 GH family 推断，
-# 因为某些 GH family 并不对应唯一酶功能。
+# 特别注意：
+# Cellobiohydrolase / CBH 不会被当作 Exoglucanase，
+# 如果 Sheet2 中存在这些列，它们会进入 Other cellulases。
 # ============================================================
 
-classify_cellulase <- function(x) {
+EG_COLUMN <-
+  "Endoglucanase"
 
 
-  x2 <- tolower(x)
+EXG_COLUMN <-
+  "Exoglucanase"
 
 
-  x2 <- str_replace_all(
-    x2,
-    "β",
-    "beta"
-  )
+BGL_COLUMN <-
+  "Beta-glucosidase"
 
 
-  # ==========================================================
-  # ExG
-  #
-  # 仅将明确标注为 ExG / Exoglucanase 的列归为 ExG。
-  # CBH / Cellobiohydrolase 归入 Other cellulases。
-  #
-  # ExG 在 EG 之前判断，
-  # 避免将 exoglucanase 误判为 EG。
-  # ==========================================================
+required_cellulase_cols <- c(
 
-  if (
-    str_detect(
-      x2,
-      "(^|[^a-z0-9])exg([^a-z0-9]|$)"
-    ) |
-      str_detect(
-        x2,
-        "exo[-_ ]?glucanase"
-      )
-  ) {
+  EG_COLUMN,
 
-    return(
-      EXG_NAME
+  EXG_COLUMN,
+
+  BGL_COLUMN
+
+)
+
+
+# ============================================================
+# 11. 检查三列是否存在于 Sheet2
+# ============================================================
+
+missing_cellulase_cols <- setdiff(
+
+  required_cellulase_cols,
+
+  gene_cols
+
+)
+
+
+if (length(missing_cellulase_cols) > 0) {
+
+  stop(
+
+    paste0(
+
+      " Sheet2 缺少以下经典纤维素酶数据列：",
+
+      paste(
+        missing_cellulase_cols,
+        collapse = ", "
+      ),
+
+      "。请检查 Sheet2 列名是否与 Endoglucanase、Exoglucanase、Beta-glucosidase 一致。"
+
     )
 
-  }
-
-
-  # ==========================================================
-  # BGL
-  # ==========================================================
-
-  if (
-    str_detect(
-      x2,
-      "(^|[^a-z0-9])bgl([^a-z0-9]|$)"
-    ) |
-      str_detect(
-        x2,
-        "beta[-_ ]?glucosidase"
-      ) |
-      str_detect(
-        x2,
-        "beta[-_ ]?d[-_ ]?glucosidase"
-      )
-  ) {
-
-    return(
-      BGL_NAME
-    )
-
-  }
-
-
-  # ==========================================================
-  # EG
-  # ==========================================================
-
-  if (
-    str_detect(
-      x2,
-      "(^|[^a-z0-9])eg([^a-z0-9]|$)"
-    ) |
-      str_detect(
-        x2,
-        "endoglucanase"
-      ) |
-      str_detect(
-        x2,
-        "endo[-_ ]?glucanase"
-      )
-  ) {
-
-    return(
-      EG_NAME
-    )
-
-  }
-
-
-  # ==========================================================
-  # 其余
-  # ==========================================================
-
-  return(
-    OTHER_NAME
   )
 
 }
 
 
+cat(
+  "\n Sheet2 中的三个纤维素酶数据列：\n"
+)
+
+
+cat(
+  "1. ",
+  EG_COLUMN,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "2. ",
+  EXG_COLUMN,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "3. ",
+  BGL_COLUMN,
+  "\n",
+  sep = ""
+)
+
+
 # ============================================================
-# 11. 对 Sheet2 中所有酶/基因进行分类
+# 12. 按照 Sheet2 数据列进行精确分类
+#
+# 不使用正则表达式模糊匹配。
+# 不使用 CBH 推断 ExG。
+# 不使用 GH family 推断 EG / ExG / BGL。
 # ============================================================
 
 enzyme_classification <- tibble(
@@ -790,14 +783,19 @@ enzyme_classification <- tibble(
 
   mutate(
 
-    Cellulase_class = vapply(
+    Cellulase_class = case_when(
 
-      Original_gene,
+      Original_gene == EG_COLUMN ~
+        EG_NAME,
 
-      classify_cellulase,
+      Original_gene == EXG_COLUMN ~
+        EXG_NAME,
 
-      FUN.VALUE =
-        character(1)
+      Original_gene == BGL_COLUMN ~
+        BGL_NAME,
+
+      TRUE ~
+        OTHER_NAME
 
     )
 
@@ -810,7 +808,7 @@ cat(
 
 
 cat(
-  "纤维素酶分类结果：\n"
+  "纤维素酶精确分类结果：\n"
 )
 
 
@@ -821,9 +819,122 @@ print(
 
 
 # ============================================================
-# 12. 保存分类表
+# 13. 验证三个目标列的分类结果
+# ============================================================
+
+check_target_class <- function(
+    column_name,
+    expected_class
+) {
+
+  observed_class <- enzyme_classification %>%
+
+    filter(
+      Original_gene == column_name
+    ) %>%
+
+    pull(
+      Cellulase_class
+    )
+
+
+  if (length(observed_class) != 1) {
+
+    stop(
+      paste0(
+        " ",
+        column_name,
+        " 在分类表中的记录数不是1，请检查 Sheet2 列名。"
+      )
+    )
+
+  }
+
+
+  if (!identical(
+    observed_class,
+    expected_class
+  )) {
+
+    stop(
+      paste0(
+        " ",
+        column_name,
+        " 分类错误。期望分类：",
+        expected_class,
+        "；实际分类：",
+        observed_class
+      )
+    )
+
+  }
+
+}
+
+
+check_target_class(
+  EG_COLUMN,
+  EG_NAME
+)
+
+
+check_target_class(
+  EXG_COLUMN,
+  EXG_NAME
+)
+
+
+check_target_class(
+  BGL_COLUMN,
+  BGL_NAME
+)
+
+
+cat(
+  "\n 三个纤维素酶列分类验证通过\n"
+)
+
+
+# ============================================================
+# 13.1 检查是否存在 CBH / Cellobiohydrolase 列
 #
-# 保存酶分类表
+# 如果存在，仅提示其被归入 Other cellulases。
+# 不会作为 Exoglucanase 数据使用。
+# ============================================================
+
+cbh_like_cols <- gene_cols[
+
+  tolower(
+    trimws(
+      gene_cols
+    )
+  ) %in% c(
+    "cbh",
+    "cellobiohydrolase"
+  )
+
+]
+
+
+if (length(cbh_like_cols) > 0) {
+
+  cat(
+    "\n Sheet2 中检测到 CBH / Cellobiohydrolase 列：\n"
+  )
+
+  print(
+    cbh_like_cols
+  )
+
+  cat(
+    "这些列按照当前设定归入 Other cellulases，不进入 Exoglucanase (ExG)。\n"
+  )
+
+}
+
+
+# ============================================================
+# 13.2 保存分类表
 # ============================================================
 
 write.csv(
@@ -843,51 +954,6 @@ write.csv(
     "UTF-8"
 
 )
-
-
-# ============================================================
-# 13. 检查三个目标类别是否成功识别
-# ============================================================
-
-detected_classes <- unique(
-  enzyme_classification$Cellulase_class
-)
-
-
-if (!EG_NAME %in% detected_classes) {
-
-  warning(
-    paste0(
-      " 没有从 Sheet2 列名中识别到 ",
-      EG_NAME,
-      "。请检查 Cellulose_Enzyme_classification.csv。"
-    )
-  )
-}
-
-
-if (!EXG_NAME %in% detected_classes) {
-
-  warning(
-    paste0(
-      " 没有从 Sheet2 列名中识别到 ",
-      EXG_NAME,
-      "。请检查 Cellulose_Enzyme_classification.csv。"
-    )
-  )
-}
-
-
-if (!BGL_NAME %in% detected_classes) {
-
-  warning(
-    paste0(
-      " 没有从 Sheet2 列名中识别到 ",
-      BGL_NAME,
-      "。请检查 Cellulose_Enzyme_classification.csv。"
-    )
-  )
-}
 
 
 # ============================================================
@@ -1032,7 +1098,7 @@ df_merge <- df_tpm %>%
 
 
 cat(
-  "\n 合并后有效 MAG 数：",
+  "\n 合并后 MAG 数：",
   nrow(df_merge),
   "\n"
 )
@@ -1120,7 +1186,7 @@ if (any(is.na(df_long$Cellulase_class))) {
 # ============================================================
 # 20. 原始 Order × Gene 汇总
 #
-# 保留原始 Order × Gene 汇总
+# 这个表保留用于追溯
 # ============================================================
 
 df_order_gene_original <- df_long %>%
@@ -1311,9 +1377,9 @@ df_order_class <- df_order_class_original %>%
 # ============================================================
 # 25. 纤维素酶固定顺序
 #
-# 固定功能类别顺序
+# 不再按照 abundance 排名
 #
-
+# 永远按照生物学功能顺序：
 #
 # EG → ExG → BGL → Other cellulases
 # ============================================================
@@ -1334,7 +1400,7 @@ cellulase_levels_all <- c(
 # ============================================================
 # 26. 只保留实际有 contribution 的类别
 #
-# 保留具有非零贡献的类别。
+# 如果四类全部存在，则四类全部显示。
 # ============================================================
 
 class_totals <- df_order_class %>%
@@ -1369,7 +1435,7 @@ cellulase_levels <- cellulase_levels_all[
 
 
 cat(
-  "\n最终显示的 Cellulase classes：\n"
+  "\nCellulase classes：\n"
 )
 
 
@@ -1796,8 +1862,8 @@ draw_cellulose_chord <- function(
   # ==========================================================
   # Gap 设置
   #
-  
-  
+  # 现在只有4类 cellulases，
+  # 所以可以把间距稍微加大
   # ==========================================================
 
   gap_after <- ifelse(
@@ -1895,8 +1961,8 @@ draw_cellulose_chord <- function(
   # ==========================================================
   # Link颜色
   #
-  # Link 颜色由 Order 控制。
-  
+  # 仍然由Order控制，
+  # 因此可以直接看到每个Order连接到哪一类cellulase
   # ==========================================================
 
   link_colors <- sapply(
@@ -2068,8 +2134,8 @@ draw_cellulose_chord <- function(
           0.65
 
 
-        # 三类经典酶使用斜体
-        # Other cellulases 使用普通字体
+        # 3类经典酶斜体
+        # Other cellulases普通体
         if (
           label ==
             OTHER_NAME
@@ -2934,4 +3000,108 @@ write.csv(
   fileEncoding =
     "UTF-8"
 
+)
+
+
+# ============================================================
+# 56. 完成
+# ============================================================
+
+cat(
+  "\n 纤维素 Chord Diagram 分析完成。\n"
+)
+
+
+cat(
+  "\n========================================\n"
+)
+
+
+cat(
+  "显示结构：\n"
+)
+
+
+cat(
+  "Order = TOP",
+  TOP_ORDER_N,
+  " + Others\n",
+  sep = ""
+)
+
+
+cat(
+  "\nCellulase classes：\n"
+)
+
+
+cat(
+  "1. ",
+  EG_NAME,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "2. ",
+  EXG_NAME,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "3. ",
+  BGL_NAME,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "4. ",
+  OTHER_NAME,
+  "\n",
+  sep = ""
+)
+
+
+cat(
+  "\nTOP Order 数量：",
+  length(top_orders),
+  "\n"
+)
+
+
+cat(
+  "最终 Order sectors：",
+  length(order_levels),
+  "\n"
+)
+
+
+cat(
+  "最终 Cellulase sectors：",
+  length(cellulase_levels),
+  "\n"
+)
+
+
+cat(
+  "\n输出目录：\n",
+  output_dir,
+  "\n"
+)
+
+
+cat(
+  "\n主要文件：\n",
+  "1. Cellulose_3Classes_TOP10Orders_April.png / PDF\n",
+  "2. Cellulose_3Classes_TOP10Orders_October.png / PDF\n",
+  "3. Cellulose_3Classes_TOP10Orders_combined.png / PDF\n",
+  "4. Cellulose_Enzyme_classification.csv\n",
+  "5. Cellulose_Class_summary.csv\n",
+  "6. Cellulose_TOP10Orders_3Classes_grouped.csv\n",
+  "7. Cellulose_Order_Class_relative_contribution.csv\n"
 )
